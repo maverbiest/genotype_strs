@@ -1,3 +1,10 @@
 # data and result dirs
 data/*
 results/*
+info/*
+R/GDCdata/*
+
+# R stuff
+*.Rproj*
+*.DS_Store
+R/MANIFEST.txt
