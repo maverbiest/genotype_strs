@@ -1,3 +1,11 @@
 # data and result dirs
 data/*
 results/*
+
+# Slurm and nextflow stuff
+pipelines/*/work/*
+*.nextflow*
+Slurm-*
+
+# Python stuff
+.ipynb*
