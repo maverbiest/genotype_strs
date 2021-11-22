@@ -1,6 +1,7 @@
 # data and result dirs
 data/*
 results/*
+<<<<<<< HEAD
 
 # Slurm and nextflow stuff
 pipelines/*/work/*
@@ -9,3 +10,12 @@ Slurm-*
 
 # Python stuff
 .ipynb*
+=======
+info/*
+R/GDCdata/*
+
+# R stuff
+*.Rproj*
+*.DS_Store
+R/MANIFEST.txt
+>>>>>>> a3fb0c5992a332083ea5942ab9cf9179bf605e0a
