@@ -37,9 +37,9 @@ def process_gangstr_vcf(vcf: str, bedl: str=None):
         with open(bedl, "r") as f:
             variant = get_next_variant(vcf) # collect the first variant    
             for line in f:
-                line_split = line.strip().split("\t")          
-                if bedl_matches_vcf(variant, line_split):               
-                    str_metainf = line_split[5].split(":")
+                line_split = line.strip().split("\t")    
+                if bedl_matches_vcf(variant, line_split):      
+                    str_metainf = line_split[6].split(":")
                     variant.ID = str_metainf[0]
                     variant.INFO['PURITY'] = str_metainf[2]
 
@@ -65,11 +65,11 @@ def bedl_matches_vcf(variant, line_split: list) -> bool:
     """ Consecutive checks of whether the chromosome, start position and repeat unit
     in the supplied variant and (split + stripped) bedl line match. If all matches, return True,
     otherwise return False
-    """
+    """    
     if not line_split[0] == variant.CHROM:
         return False
     if not int(line_split[1]) == variant.start + 1:
-        return False   
+        return False    
     try: 
         if not variant.INFO.get('RU').upper() == line_split[4]:
             return False
