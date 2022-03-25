@@ -9,3 +9,8 @@ Slurm-*
 
 # Python stuff
 .ipynb*
+
+# R stuff
+.DS_Store
+*.Rproj*
+.Rhistory
