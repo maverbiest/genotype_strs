@@ -1,0 +1,76 @@
+---
+title: "eSTRs"
+author: "Max Verbiest"
+date: '2022-03-28'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load}
+library(tidyverse)
+```
+
+```{r load eSTRs}
+df_estr = read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/data/fotsing_etal_data_sheet_hg38_dropna_tral_panel.tsv", header=F, sep="\t") %>% 
+  mutate(tmp_id = paste0(V13, "_", V14), panel_unit = V17) %>% 
+  dplyr::select(-c(`V13`:`V19`))
+colnames(df_estr) <- c(
+  "chr",
+  "start",
+  "end",
+  "gene_id",
+  "gene_name",
+  "tissue_hits",
+  "beta_max",
+  "tissue_info",
+  "pval",
+  "CAVIAR_score",
+  "unit_fw",
+  "unit_rv",
+  "panel_overlap",
+  "tmp_id",
+  "unit_panel"
+)
+```
+
+```{r}
+df_estr_tumors <- df_estr %>% 
+  left_join(df_variation_wide, by = "tmp_id") %>% 
+  select(!is.na("patient"))
+
+df_estr_tumors <- df_estr %>% 
+  left_join(df_variation_wide, by = "tmp_id") %>% 
+  filter(!is.na(patient))
+
+df_estr_nonref <- df_estr_tumors %>% 
+  filter(total_len_diff > 0)
+
+df_fm_estr_nonref <- df_estr_nonref %>% 
+  filter(CAVIAR_score > 0.3)
+```
+
+```{r}
+df_trusight_genes <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/data/trusight_onco_genes.txt", header=F, sep="\t") %>% select(`V2`)
+colnames(df_trusight_genes) <- "gene_name"
+df_trusight_genes %>% 
+  left_join(df_estr_tumors, by="gene_name") %>%
+  # left_join(df_estr_tumors %>% filter(CAVIAR_score >0.3), by="gene_name") %>%
+  filter(!is.na(chr)) %>% 
+  View()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

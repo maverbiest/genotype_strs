@@ -1,0 +1,205 @@
+---
+title: "Investigation of solid set flank STRs"
+author: "Max Verbiest"
+date: '2022-04-06'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load libs}
+library(tidyverse)
+```
+
+```{r functions}
+load_str_panel <- function(filepath) {
+  df_panel <- read.delim(filepath, header=FALSE, na.strings=".") %>% 
+    cbind(., str_split_fixed(.$V7, "[:]", n=Inf)) %>% 
+    dplyr::select(-c(V5, V6, V7, `3`)) %>% 
+    mutate(
+      `1` = ifelse(`1` == ".", NA, `1`),
+      `4` = as.integer(`4`)
+      )
+  
+  colnames(df_panel) <- c("chr", "start", "end", "period", "repeat_id", "msa", "max_p_stretch")
+  
+  df_panel <- df_panel %>% 
+    mutate(
+      tmp_id = paste0(chr, "_", start),
+      ref = (end - start + 1) / period
+    )
+  
+  return(df_panel)
+}
+
+add_panel_info <- function(df, panel, new_colname) {
+  df <- df %>% 
+    left_join(
+      panel %>% select(tmp_id) %>% distinct() %>% mutate(tmp = TRUE),
+      by="tmp_id"
+    ) %>%
+    mutate(tmp = if_else(is.na(tmp), FALSE, TRUE))
+  
+  colnames(df)[ncol(df)] <- new_colname
+  
+  return(df)
+}
+
+calc_patient_len_dif <- function(a0, b0, a1, b1) {
+      option_a = abs(a0 - a1) + abs(b0 - b1)
+      option_b = abs(a0 - b1) + abs(b0 - a1)
+      return(min(option_a, option_b))
+}
+```
+
+```{r load panels, echo=FALSE}
+df_full_panel = load_str_panel("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel.tsv")
+df_exon_panel = load_str_panel("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel_exons.tsv")
+df_cds_panel = load_str_panel("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel_cds.tsv")
+
+# load tral_perf panel for STRs in segmental duplications
+df_segdup_panel <- load_str_panel("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel_segdups.tsv")
+
+# load tral_perf panel for STRs that have STRs in their flanking regions
+df_flank_panel <- load_str_panel("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel_flanks.tsv")
+
+# load tral_perf panel for STRs that have STRs in their flanking regions with exactly the same consensus unit
+df_flank_cons_panel <- load_str_panel("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel_flanks_cons.tsv")
+
+# load tral_perf panel for STRs that have STRs in their flanking regions where the consensus unit is the same or 
+# part of the consensus unit (e.g. AT matches AAT)
+df_flank_cons_loose_panel <- load_str_panel("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel_flanks_cons_loose.tsv")
+```
+
+```{r}
+df_patient_len_diff_filt <- add_panel_info(df_patient_len_diff_filt, df_flank_panel, "has_flank_str")
+df_patient_len_diff_filt <- add_panel_info(df_patient_len_diff_filt, df_flank_cons_panel, "has_cons_flank_str")
+df_patient_len_diff_filt <- add_panel_info(df_patient_len_diff_filt, df_flank_cons_loose_panel, "has_cons_loose_flank_str")
+
+df_patient_len_diff_filt <- df_patient_len_diff_filt %>% 
+  mutate(
+    flank_type = case_when(
+      has_cons_flank_str ~ "cons_match",
+      has_cons_loose_flank_str ~ "loose_cons_match",
+      has_flank_str ~ "flank_str_no_match",
+      TRUE ~ "no_flank"
+    )
+  ) %>% 
+  select(-c(has_cons_flank_str, has_cons_loose_flank_str, has_flank_str))
+```
+
+```{r}
+df_full_panel %>% 
+  group_by(in_segdup) %>% 
+  count()
+
+df_full_panel <- df_full_panel %>% 
+  filter(!in_segdup) %>% 
+  select(-in_segdup)
+```
+
+```{r}
+df_full_panel %>% 
+  group_by(gen_region, has_flank_str) %>% 
+  summarize(count = n()) %>% 
+  left_join(df_full_panel %>% group_by(gen_region) %>% count(), by="gen_region") %>% 
+  mutate(perc = count/n * 100) %>% 
+  select(-n) %>% 
+  ggplot(aes(x=gen_region, y=count, fill=has_flank_str)) +
+  geom_bar(stat='identity', position=position_dodge()) +
+  # geom_text(aes(label = count), position=position_dodge(width=0.8), vjust=-1) +
+  xlab("") + 
+  ylab("Percentage of STR loci") +
+  labs(fill="Has flank STR") +
+  facet_wrap(~gen_region, scales="free")
+```
+
+```{r}
+df_patient_len_diff_filt %>% 
+  filter(flank_type == "no_flank") %>%
+  group_by(patient, patient_len_diff > 0) %>% 
+  summarize(calls = n()) %>% 
+  pivot_wider(
+      names_from = `patient_len_diff > 0`,
+      values_from = calls,
+      names_prefix = "variable_"
+    ) %>% ungroup() %>% 
+  mutate(perc_calls_variable = variable_TRUE / (variable_FALSE + variable_TRUE) * 100) %>% 
+  filter(!is.na(perc_calls_variable)) %>% 
+  left_join(df_clinical_solid, by="patient") %>%
+  ggplot(aes(x=reorder(patient,perc_calls_variable), y=perc_calls_variable, fill=MSI)) +
+  geom_bar(stat='identity') +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+```
+
+```{r}
+msi_patients = c("TCGA-AZ-6598", "TCGA-AA-3663", "TCGA-AA-3525", "TCGA-A6-5665")
+# has_cons_flank_str has_cons_loose_flank_str
+table_plot <- df_patient_len_diff_filt %>% 
+    # filter(patient %in% msi_patients) %>% 
+    # filter(!(has_flank_str & has_cons_loose_flank_str)) %>% View()
+    # filter(!has_cons_loose_flank_str) %>%
+    mutate(flank_type=ifelse(has_flank_str, "neighbour", "no neighbour")) %>% 
+    left_join(df_clinical, by="patient") %>% 
+    group_by(MSI, gen_region, flank_type, period, patient_len_diff > 0) %>%
+    count() %>%
+    pivot_wider(
+      names_from = `patient_len_diff > 0`,
+      values_from = n,
+      names_prefix = "variable_"
+    ) %>% ungroup() %>% 
+    mutate(total = `variable_TRUE` + `variable_FALSE`, perc_variable = `variable_TRUE` / (`variable_TRUE` + `variable_FALSE`) * 100)
+
+table_plot$gen_region <- factor(as.factor(table_plot$gen_region), levels=c("CDS", "UTR", "intron/intergenic"), ordered=T)
+table_plot$flank_type <- factor(as.factor(table_plot$flank_type), levels=c("cons_match", "loose_cons_match", "flank_str_no_match", "no_flank"), ordered=T)
+
+table_plot %>%
+  # filter(gen_region == "CDS") %>%
+  # filter(period > 1) %>% 
+  ggplot(aes(x=as.factor(period), y=perc_variable, fill=flank_type)) +
+  geom_bar(stat='identity', position=position_dodge()) +
+  scale_fill_hue() +
+  # geom_text(aes(label = paste0(`variable_TRUE`, "/", total)), position=position_dodge(width=1), hjust=-0.1) +
+  coord_flip() +
+  xlab("Unit size") + 
+  ylab("Percentage of STRs variable") +
+  # ylim(0, 35) +
+  facet_wrap(~gen_region + MSI, scales = "fixed", nrow=3)
+  
+#+
+  # labs(fill="Has flank STR")
+```
+
+```{r}
+fisher.test(matrix(c(32, 8175, 5, 657), nrow = 2))
+```
+
+
+```{r}
+table_plot_long <- df_patient_len_diff_filt %>% 
+  group_by(gen_region, flank_type, period, patient_len_diff > 0) %>% 
+  count()
+
+table_plot_long %>% 
+  filter(gen_region == "CDS") %>% 
+  ggplot(aes(x=as.factor(period), y=n, fill=`patient_len_diff > 0`)) +
+  geom_bar(stat='identity', position=position_dodge()) +
+  # geom_text(aes(label = paste0(`variable_TRUE`, "/", total)), position=position_dodge(width=0.5), hjust=-0.1) +
+  coord_flip() +
+  xlab("Unit size") + 
+  # ylab("Percentage of STRs variable") + ylim(0, 45) +
+  facet_wrap(~flank_type, scales = "free")
+```
+
+
+
+
+
+
+
+
+
+
+

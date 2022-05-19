@@ -7,72 +7,37 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
-
 ```{r load libs}
 library(tidyverse)
-```
-
-```{r load panels, echo=FALSE}
-# load tral_perf panel for exonic regions
-exon_panel_df <- read.delim("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel_exons.tsv", header=FALSE, na.strings=".") %>% 
-  cbind(., str_split_fixed(.$V7, "[:]", n=Inf)) %>% 
-  dplyr::select(-c(V5, V6, V7, `3`)) %>% 
-  mutate(
-    `1` = ifelse(`1` == ".", NA, `1`),
-    `4` = as.integer(`4`)
-    )
-
-colnames(exon_panel_df) <- c("chr", "start", "end", "period", "repeat_id", "msa", "max_p_stretch")
-exon_panel_df <- exon_panel_df %>% 
-  mutate(
-    tmp_id = paste0(chr, "_", start),
-    ref = (end - start + 1) / period
-  )
-
-# load tral_perf panel for CDS regions
-cds_panel_df <- read.delim("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel_CDS.tsv", header=FALSE, na.strings=".") %>% 
-  cbind(., str_split_fixed(.$V7, "[:]", n=Inf)) %>% 
-  dplyr::select(-c(V5, V6, V7, `3`)) %>% 
-  mutate(
-    `1` = ifelse(`1` == ".", NA, `1`),
-    `4` = as.integer(`4`)
-    )
-
-colnames(cds_panel_df) <- c("chr", "start", "end", "period", "repeat_id", "msa", "max_p_stretch")
-cds_panel_df <- cds_panel_df %>% 
-  mutate(
-    tmp_id = paste0(chr, "_", start),
-    ref = (end - start + 1) / period
-  )
+source("str_gt_utils.R")
 ```
 
 ```{r load variation, echo=FALSE}
+# patients with both PT and BDN sample available (10.05.2022)
+# shared_patients = c('TCGA-AA-A01K', 'TCGA-AA-3851', 'TCGA-AA-A00O', 'TCGA-AA-3867', 'TCGA-AA-3855', 'TCGA-AA-3860', 'TCGA-AA-3856', 'TCGA-AA-3972', 'TCGA-AA-3949')
+shared_patients =c('TCGA-AA-A02E', 'TCGA-A6-5661', 'TCGA-AA-3968', 'TCGA-AD-A5EK', 'TCGA-AA-3972', 'TCGA-AG-3728', 'TCGA-AA-3855', 'TCGA-AA-3851', 'TCGA-AA-3529', 'TCGA-A6-6780', 'TCGA-AD-6895', 'TCGA-AA-3854', 'TCGA-A6-2675', 'TCGA-A6-5666', 'TCGA-AA-A00O', 'TCGA-A6-3810', 'TCGA-A6-2685', 'TCGA-AA-3517', 'TCGA-AG-3890', 'TCGA-A6-2677', 'TCGA-AF-2690', 'TCGA-A6-A56B', 'TCGA-A6-3807', 'TCGA-A6-2682', 'TCGA-AA-3846', 'TCGA-AA-3522', 'TCGA-AG-3574', 'TCGA-AA-3848', 'TCGA-A6-5664', 'TCGA-A6-3808', 'TCGA-AA-3856', 'TCGA-A6-6653', 'TCGA-A6-5662', 'TCGA-AA-3867', 'TCGA-A6-2674', 'TCGA-AA-3875', 'TCGA-AA-3966', 'TCGA-AA-3524', 'TCGA-AA-A02R', 'TCGA-AA-3531', 'TCGA-A6-6781', 'TCGA-AA-3950', 'TCGA-AA-3514', 'TCGA-AA-A01K', 'TCGA-AA-3527', 'TCGA-A6-5667', 'TCGA-A6-4107', 'TCGA-A6-6652', 'TCGA-A6-A565', 'TCGA-AA-3519', 'TCGA-AA-3530', 'TCGA-AD-6890', 'TCGA-AA-A02W', 'TCGA-A6-5665', 'TCGA-A6-5660', 'TCGA-A6-2681', 'TCGA-AA-A02H', 'TCGA-A6-2680', 'TCGA-A6-6650', 'TCGA-A6-6654', 'TCGA-A6-6651', 'TCGA-A6-2683', 'TCGA-A6-A566', 'TCGA-AA-A02J', 'TCGA-AA-3860', 'TCGA-AA-3949', 'TCGA-AA-A017', 'TCGA-A6-5659', 'TCGA-AA-3866', 'TCGA-A6-6782')
+
+df_genotypes_pt <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/results/oxana_variation/crc_primarytumor_11may.csv") %>% 
+  filter(patient %in% shared_patients)
+df_genotypes_bdn <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/results/oxana_variation/crc_bloodnormal_10may.csv") %>% 
+  filter(patient %in% shared_patients)
+
 # load variation data
-df_variation <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/results/oxana_variation/crc_variations_solid_march.csv")
-df_variation <- df_variation %>% 
-  distinct() %>%  # Goes from 351157 -> 351064 after distinct(). Why?
-  mutate(tmp_id = paste0(chr, "_", start), ref_len_diff = abs(alt - ref))
+df_genotypes <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/results/oxana_variation/crc_solid_april.csv")
+df_genotypes <- rbind(df_genotypes, df_genotypes_bdn, df_genotypes_pt)
 
-# MSI scores
-df_msi_scores <- read.csv("/Users/maxverbiest/PhD/projects/TCGA_biolinks/data/manifest/COAD_WXS_primary_msi_score.tsv", sep="\t") %>%
-  dplyr::select(submitter_id, msi_score, msi_gene_mut) %>% distinct()
-colnames(df_msi_scores)[1] <- "patient"
+df_genotypes <- df_genotypes %>% 
+  distinct() %>%
+  mutate(tmp_id = paste0(chr, "_", start), ref_len_diff = alt - ref)
+```
 
-df_clinical <- read.csv("../../data/oxana_tcga_clinical.csv", header = TRUE) %>%
-  dplyr::select(c(case_submitter_id, project_id, gender, MSI, CMS))
-colnames(df_clinical)[1] <- "patient"
 
-df_clinical <- df_msi_scores %>% 
-  left_join(df_clinical, by="patient")
-remove(df_msi_scores)
-
-# pivot into wider table where tumour and healthy gt are one the same row
-# df_variation_sub <- variation_df %>% dplyr::filter(patient == "TCGA-AA-3520")
-df_patient_len_diff <- df_variation %>% 
-  mutate(sample_type = if_else(sample_type == "Primary Tumor", "pt", "stn")) %>% 
+```{r}
+# pivot into wider table where bi-allelic tumour and healthy gt are one the same row
+df_patient_variation <- df_genotypes %>% 
+  mutate(sample_type = if_else(sample_type == "Primary Tumor", "tumor", "healthy")) %>% 
   group_by(patient, sample_type, tmp_id) %>%
-  mutate(allele = LETTERS[1:n()]) %>%
+  mutate(allele = LETTERS[1:n()]) %>% 
   pivot_wider(
     id_cols = c(patient, sample_type, tmp_id),
     names_from = allele,
@@ -86,236 +51,345 @@ df_patient_len_diff <- df_variation %>%
     names_from = sample_type,
     values_from = c(allele_A, allele_B)
   ) %>% ungroup()
+```
 
-df_patient_len_diff_filt <- df_patient_len_diff %>% 
-  dplyr::filter(!is.na(allele_A_pt),!is.na(allele_A_stn)) %>% 
-  dplyr::relocate(allele_A_stn, .before = allele_B_stn)
 
-df_patient_len_diff_filt <- df_patient_len_diff_filt %>% 
-  left_join(variation_df %>% select(tmp_id, period, ref) %>% distinct(), by="tmp_id") %>% 
+```{r}
+# This filter takes DF from 4222069 -> 2615301 rows
+df_patient_variation <- df_patient_variation %>% 
+  dplyr::filter(!is.na(allele_A_tumor),!is.na(allele_A_healthy)) %>% 
+  dplyr::relocate(allele_A_healthy, .before = allele_B_healthy)
+
+df_patient_variation <- df_patient_variation %>% 
+  left_join(df_genotypes %>% select(tmp_id, period, ref, repeat_id) %>% distinct(), by="tmp_id") %>% 
   rowwise() %>% 
   mutate(
-    patient_len_diff = calc_patient_len_dif(allele_A_stn, allele_B_stn, allele_A_pt, allele_B_pt)
+    patient_len_diff = calc_patient_len_dif(allele_A_healthy, allele_B_healthy, allele_A_tumor, allele_B_tumor)
     )
 
-df_mutated_strs <- df_patient_len_diff_filt %>% 
-  dplyr::filter(patient_len_diff > 0)
+write.table(df_patient_variation, "/Users/maxverbiest/PhD/projects/genotype_strs/results/oxana_variation/patient_variation_wide.tsv", quote=F, row.names=F, sep="\t")
+```
 
-exon_panel_df <- exon_panel_df %>% 
-  left_join(
-    variation_df %>% select(tmp_id) %>% distinct() %>% mutate(is_variable = TRUE),
-    by="tmp_id"
-  ) %>%
-  mutate(is_variable = if_else(is.na(is_variable), FALSE, TRUE))
+
+```{r}
+df_patient_variation <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/results/oxana_variation/patient_variation_wide.tsv", header=T, sep="\t")
+df_str_info <- read.csv("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel_meta_info.tsv", header=T, sep="\t")
+
+# This filter takes DF from 2615301 -> 2470982 rows
+df_patient_variation_filt <- df_patient_variation %>% 
+  left_join(df_str_info %>% select(tmp_id, in_segdup), by="tmp_id") %>% 
+  filter(!in_segdup) %>% 
+  select(-in_segdup)
+
+# This filter takes DF from 2470982 -> 1542994 rows (remove homorepeats and repeats with close neighbours)
+df_patient_variation_filt <- df_patient_variation_filt %>% 
+  left_join(df_str_info %>% select(tmp_id, neighbour_type), by="tmp_id") %>% 
+  filter(period > 1, neighbour_type == "no_neighbour") %>% 
+  select(-neighbour_type)
+
+df_clinical <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/data/clinical/oxana_tcga_clinical.csv", header = TRUE) %>%
+  dplyr::select(c(case_submitter_id, gender, MSI, CMS))
+colnames(df_clinical)[1] <- "patient"
+```
+
+
+```{r}
+df_patient_variation_filt %>% 
+  left_join(df_clinical, by="patient") %>% 
+  group_by(patient) %>% 
+  summarize(total_calls = n()) %>% 
+  left_join(df_clinical, by="patient") %>% 
+  ggplot(aes(x=reorder(patient,total_calls), y=total_calls, fill=MSI)) +
+  geom_bar(stat='identity') +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+
+# This removes 15 MSS patients that have very few called loci (84 -> 69 patients)
+df_patient_variation_filt <- df_patient_variation_filt %>% 
+  group_by(patient) %>% 
+  filter(n() > 5000)
 ```
 
 ```{r}
-calc_patient_len_dif <- function(a0, b0, a1, b1) {
-      option_a = abs(a0 - a1) + abs(b0 - b1)
-      option_b = abs(a0 - b1) + abs(b0 - a1)
-      return(min(option_a, option_b))
-}
-
-df_patient_len_diff_filt %>% 
-  rowwise() %>%
-  mutate(tmp_diff = calc_patient_len_dif(allele_A_stn, allele_B_stn, allele_A_pt, allele_B_pt)) %>% View()
-```
-
-
-```{r, echo=FALSE}
-print("STR annotations from exons")
-head(exon_panel_df) %>% knitr::kable()
-
-print("Variation in WXS data from group of COAD patients")
-head(variation_df) %>% knitr::kable()
-
-print("STR loci where length != reference allele length in both healthy and tumor sample from a patient")
-head(patient_len_diff_df) %>% knitr::kable()
-```
-
-
-## Length of stable STRs vs. instable STRs
-
-Focus only on STRs that are from exonic regions.
-
-```{r all exonic, echo=TRUE}
-exon_panel_df %>% 
-  group_by(period, is_variable) %>%
-  summarise(max_p_stretch = list(max_p_stretch)) %>% 
-  pivot_wider(names_from = is_variable, values_from = max_p_stretch) %>% 
-  group_by(period) %>%
-  mutate(
-    mu_stable = mean(unlist(`FALSE`)),
-    mu_instable = mean(unlist(`TRUE`)),
-    n_stable = length(unlist(`FALSE`)),
-    n_instable = length(unlist(`TRUE`)),
-    p_val = t.test(unlist(`FALSE`), unlist(`TRUE`), var.equal = F)$p.value,
-    t_stat = t.test(unlist(`FALSE`), unlist(`TRUE`), var.equal = F)$statistic
+df_patient_variation_filt %>% 
+  left_join(df_clinical, by="patient") %>% 
+  mutate(variable = ifelse(patient_len_diff > 0, "variable", "not_variable")) %>% 
+  group_by(MSI, patient, variable) %>% 
+  summarize(count = n()) %>% 
+  pivot_wider(
+    names_from = variable,
+    values_from = count
   ) %>% 
-  select(-c(`TRUE`, `FALSE`)) %>% 
-  knitr::kable(caption="Longest perfect repeat stretch in STR")
-
-exon_panel_df %>%
-  group_by(period, is_variable) %>%
-  summarise(ref = list(ref)) %>%
-  pivot_wider(names_from = is_variable, values_from = ref) %>%
-  group_by(period) %>%
-  mutate(
-    mu_stable = mean(unlist(`FALSE`)),
-    mu_instable = mean(unlist(`TRUE`)),
-    n_stable = length(unlist(`FALSE`)),
-    n_instable = length(unlist(`TRUE`)),
-    p_val = t.test(unlist(`FALSE`), unlist(`TRUE`), var.equal = F)$p.value,
-    t_stat = t.test(unlist(`FALSE`), unlist(`TRUE`), var.equal = F)$statistic
-  ) %>%
-  select(-c(`TRUE`, `FALSE`)) %>%
-  knitr::kable(caption="Full STR length")
-
-exon_panel_df %>% 
-  ggplot(aes(x=is_variable, y=max_p_stretch, fill=is_variable)) +
-  # ggplot(aes(x=is_variable, y=ref, fill=is_variable)) +
-  geom_boxplot() +
-  ggtitle("Longest perfect stretch in STR") + 
-  facet_wrap(~period, scales = "free")
-
-exon_panel_df %>% 
-  ggplot(aes(x=is_variable, y=ref, fill=is_variable)) +
-  # ggplot(aes(x=is_variable, y=ref, fill=is_variable)) +
-  geom_boxplot() +
-  ggtitle("Full STR length") + 
-  facet_wrap(~period, scales = "free")
+  mutate(perc_variable = variable / (variable + not_variable) * 100) %>% 
+  ggplot(aes(x=MSI, y=perc_variable, fill=MSI)) +
+  geom_boxplot()
 ```
 
-
-## Number of non-ref STRs found in Solid Tissue Normal and Primary Tumor
-
-```{r pie charts, echo=FALSE}
-variation_df %>% 
-  dplyr::filter(sample_type == "Solid Tissue Normal") %>% 
-  group_by(period) %>% 
-  summarize(count = n()) %>%
-  ggplot(aes(x="", y=count, fill=as.factor(period))) +
-  geom_col(color="black") +
-  coord_polar(theta = "y") +
-  ggtitle("Solid Tissue Normal") + 
-  geom_label(aes(label = count),
-             color = "white",
-             position = position_dodge(width=0.5),
-             show.legend = FALSE) +
-  theme_void()
-
-variation_df %>% 
-  dplyr::filter(sample_type == "Primary Tumor") %>% 
-  group_by(period) %>% 
-  summarize(count = n()) %>%
-  ggplot(aes(x="", y=count, fill=as.factor(period))) +
-  geom_col(color="black") +
-  coord_polar(theta = "y") +
-  ggtitle("Primary Tumor") + 
-  geom_label(aes(label = count),
-             color = "white",
-             position = position_dodge(width=0.5),
-             show.legend = FALSE) +
-  theme_void()
-```
-
-
-## Number of non-ref loci by reference allele length
-
-```{r histogram ref diff}
-variation_df %>% 
-  dplyr::filter(ref_len_diff <= 10) %>%
-  ggplot(aes(x=alt-ref, fill=sample_type)) +
-  geom_histogram(position = position_dodge(), stat="count")
-
-variation_df %>% 
-  dplyr::filter(ref_len_diff <= 10) %>%
-  ggplot(aes(x=alt-ref, fill=sample_type)) +
-  geom_histogram(position = position_dodge(), stat="count") +
-  facet_wrap(~period, scale="free_y")
-```
-```{r histogram patient diff}
-patient_len_diff_df %>% 
-  dplyr::filter(abs(gt_stn-ref) <= 10) %>%
-  ggplot(aes(x=gt_stn-ref)) +
-  geom_histogram(position = position_dodge(), stat="count") +
-  facet_wrap(~period, scale="free_y")
-
-# patient_len_diff_df %>%
-#   dplyr::filter(patient_len_diff <= 10) %>%
-#   ggplot(aes(x=gt_pt - ref)) +
-#   geom_histogram(position = position_dodge(), stat="count") +
-#   # scale_y_continuous(trans='log10') +
-#   facet_wrap(~period, scale="free_y")
-
-patient_len_diff_df %>%
-  dplyr::filter(patient_len_diff <= 10) %>%
-  ggplot(aes(x=gt_pt - gt_stn)) +
-  geom_histogram(position = position_dodge(), stat="count") +
-  # scale_y_continuous(trans='log10') +
-  facet_wrap(~period, scale="free_y")
-
-```
-
-## STR loci where allele length != reference allele length in both healthy and tumor sample
-
-```{r scatter plots}
-# patient_len_diff_df %>% 
-#   ggplot(aes(x=gt_stn, y=gt_pt, color=as.factor(period))) +
-#   geom_point() +
-#   coord_fixed() + 
-#   facet_wrap(~patient)
-
-patient_len_diff_df %>% 
-  dplyr::filter(patient_len_diff > 0) %>% 
-  dplyr::group_by(patient) %>% 
-  summarize(within_patient_diffs = n()) %>% 
-  left_join(clinical_df) %>% knitr::kable(caption="Within-patient STR differences")
-
-patient_len_diff_df %>% 
-  dplyr::filter(patient_len_diff > 0) %>% 
-  dplyr::group_by(patient) %>% 
-  summarize(within_patient_diffs = n()) %>% 
-  left_join(clinical_df) %>% 
-  ggplot(aes(x=msi_score, y=within_patient_diffs, color=patient)) +
-  geom_point()
-
-patient_len_diff_df %>% 
-  dplyr::filter(
-    patient_len_diff > 0,
-    # period > 1
-    ) %>%
-  ggplot(aes(x=gt_stn, y=gt_pt, color=as.factor(period))) +
-  geom_point() +
-  coord_fixed() + 
-  facet_wrap(~patient)
-```
 
 ```{r}
-df_mutated_strs <- df_mutated_strs %>% 
-  left_join(
-    exon_panel_df %>% select(tmp_id) %>% distinct() %>% mutate(in_exon = TRUE),
-    by="tmp_id"
-  ) %>%
-  mutate(in_exon = if_else(is.na(in_exon), FALSE, TRUE))
+# df_variation %>% 
+#   group_by(patient, sample_type) %>% 
+#   summarize(calls = n()) %>%
+#   rbind(data_frame(patient=c("TCGA-AA-3525"), sample_type=c("Primary Tumor"), calls=(0))) %>% # lovely little hard coding
+#   left_join(df_clinical, by="patient") %>% 
+#   ggplot(aes(x=reorder(patient,calls), y=calls, fill=sample_type)) +
+#   geom_bar(stat='identity', position=position_dodge2(width = 0.5)) +
+#   theme(axis.text.x = element_text(angle=45, hjust=1))
 
-df_mutated_strs <- df_mutated_strs %>% 
-  left_join(
-    cds_panel_df %>% select(tmp_id) %>% distinct() %>% mutate(in_cds = TRUE),
-    by="tmp_id"
-  ) %>%
-  mutate(in_cds = if_else(is.na(in_cds), FALSE, TRUE))
+df_patient_variation_filt %>% 
+  group_by(patient, patient_len_diff > 0) %>% 
+  summarize(calls = n()) %>% 
+  pivot_wider(
+      names_from = `patient_len_diff > 0`,
+      values_from = calls,
+      names_prefix = "variable_"
+    ) %>% ungroup() %>%
+  mutate(perc_calls_variable = variable_TRUE / (variable_FALSE + variable_TRUE) * 100) %>% 
+  filter(!is.na(perc_calls_variable)) %>% 
+  left_join(df_clinical, by="patient") %>%
+  ggplot(aes(x=reorder(patient,perc_calls_variable), y=perc_calls_variable, fill=MSI)) +
+  geom_bar(stat='identity') +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+```
 
-patient_len_diff_df %>% 
-  dplyr::filter(
-    in_cds == TRUE,
-    patient_len_diff != 0,
-    # gt_stn != ref,
-    # period==4
-    ) %>% 
-  group_by(period) %>% 
+
+```{r}
+df_patient_variation_filt %>% 
+  left_join(df_clinical, by="patient") %>% 
+  group_by(MSI, tmp_id) %>% 
+  summarize(count = n()) %>%
+  ggplot(aes(x=count)) +
+  geom_histogram() +
+  facet_wrap(~MSI)
+
+df_patient_variation_filt %>% 
+  group_by(tmp_id) %>% 
+  summarize(count = n()) %>%
+  filter(count >= 10) %>% 
   count()
 ```
+
+
+```{r}
+df_locus_variability <- df_patient_variation_filt %>%
+  left_join(df_clinical, by="patient") %>% 
+  mutate(instable = patient_len_diff > 0) %>% 
+  group_by(MSI, tmp_id, instable) %>%
+  summarize(count=n(), avg_size_diff = mean(patient_len_diff)) %>% 
+  pivot_wider(
+    names_from = instable,
+    values_from = count,
+    names_prefix = "instable_"
+  ) %>% 
+  mutate(
+    instable_calls = ifelse(is.na(instable_TRUE), 0, instable_TRUE),
+    stable_calls = ifelse(is.na(instable_FALSE), 0, instable_FALSE),
+    total_calls = stable_calls + instable_calls,
+    frac_variable = instable_calls / total_calls
+    ) %>% select(-c(instable_TRUE, instable_FALSE)) %>% ungroup()
+  
+df_locus_variability <- df_locus_variability %>% 
+  left_join(df_patient_variation_filt %>% ungroup() %>% select(tmp_id, repeat_id) %>% distinct(), by="tmp_id")
+
+write.table(df_locus_variability, "/Users/maxverbiest/PhD/projects/genotype_strs/results/oxana_variation/locus_variation.tsv", quote=F, row.names=F, sep="\t")
+```
+
+
+```{r}
+df_summary  <- data.frame(
+  genomic_region = c("all", "UTR", "CDS", "intron/intergenic"),
+  total_calls = c(
+    df_patient_len_diff_filt %>% count() %>% as.integer(),
+    df_patient_len_diff_filt %>% filter(in_exon, !in_cds) %>% count() %>% as.integer(),
+    df_patient_len_diff_filt %>% filter(in_cds) %>% count() %>% as.integer(),
+    df_patient_len_diff_filt %>% filter(!in_exon) %>% count() %>% as.integer()
+  ),
+  variable_calls = c(
+    df_mutated_strs %>% count() %>% as.integer(),
+    df_mutated_strs %>% filter(in_exon, !in_cds) %>% count() %>% as.integer(),
+    df_mutated_strs %>% filter(in_cds) %>% count() %>% as.integer(),
+    df_mutated_strs %>% filter(!in_exon) %>% count() %>% as.integer()
+  )
+)
+
+df_summary %>% 
+  mutate(perc_variable = variable_calls / total_calls * 100)
+```
+
+
+```{r}
+df_patient_variation_filt <- df_patient_variation_filt %>% 
+  left_join(df_str_info %>% select(tmp_id, region_type), by="tmp_id")
+df_patient_variation_filt$region_type <- factor(as.factor(df_patient_variation_filt$region_type), levels=c("intron/intergenic", "UTR", "CDS"), ordered=T)
+
+df_patient_variation_filt %>% 
+  # filter(patient_len_diff > 0) %>% 
+  # group_by(gen_region, period) %>% 
+  left_join(df_str_info %>% select(tmp_id, region_type), by="tmp_id") %>% 
+  group_by(region_type, period, patient_len_diff > 0) %>%
+  count() %>% 
+  left_join(
+    df_patient_variation_filt %>% left_join(df_str_info %>% select(tmp_id, region_type), by="tmp_id") %>% group_by(region_type, period) %>% count(),
+    # df_patient_variation_filt %>% filter(patient_len_diff > 0) %>% group_by(region_type, period) %>% count(), 
+    by=c("region_type", "period")
+    ) %>% mutate(perc = (n.x/n.y) * 100) %>% 
+  ggplot(aes(x=as.factor(period), y=perc, fill = `patient_len_diff > 0`)) +
+  geom_bar(stat='identity') +
+  facet_wrap(~region_type)
+
+df_patient_variation_filt %>% 
+  filter(patient_len_diff > 0) %>% 
+  group_by(region_type, period) %>% 
+  count() %>% 
+  left_join(
+    df_patient_variation_filt %>% group_by(region_type, period) %>% count(),
+    by=c("region_type", "period")
+    ) %>% mutate(perc_variable = (n.x/n.y) * 100) %>%
+  ggplot(aes(x=as.factor(period), y=perc_variable, fill=region_type)) +
+  geom_bar(stat='identity', position = position_dodge()) +
+  scale_fill_hue()
+
+df_patient_variation_filt %>% 
+  left_join(df_clinical, by="patient") %>%
+  filter(patient_len_diff > 0) %>% 
+  group_by(MSI, region_type, period) %>% 
+  count() %>% 
+  left_join(
+    df_patient_variation_filt %>% 
+      left_join(df_clinical, by="patient") %>%
+      group_by(MSI, region_type, period) %>% 
+      count(),
+    by=c("MSI", "region_type", "period")
+    ) %>% mutate(perc_variable = (n.x/n.y) * 100) %>%
+  ggplot(aes(x=as.factor(period), y=perc_variable, fill=region_type)) +
+  geom_bar(stat='identity', position = position_dodge()) +
+  scale_fill_hue() +
+  facet_wrap(~MSI)
+  
+df_patient_len_diff_filt %>% 
+  left_join(df_clinical, by="patient") %>%
+  filter(patient_len_diff > 0, !has_flank_str, period>1) %>% 
+  group_by(MSI, gen_region, period) %>% 
+  count() %>% 
+  left_join(
+    df_patient_len_diff_filt %>% 
+      filter(!has_flank_str) %>%
+      left_join(df_clinical, by="patient") %>% 
+      group_by(MSI, gen_region, period) %>% count(),
+    by=c("MSI", "gen_region", "period")
+    ) %>% mutate(perc_variable = (n.x/n.y) * 100) %>% 
+  ggplot(aes(x=as.factor(period), y=perc_variable, fill=gen_region)) +
+  geom_bar(stat='identity', position = position_dodge()) +
+  scale_fill_hue() +
+  facet_wrap(~MSI)
+```
+
+
+```{r}
+# STRs with flank STRs are more likely to be variable
+table_fisher <- df_patient_len_diff_filt %>% 
+    group_by(has_flank_str, patient_len_diff > 0) %>%
+    # group_by(has_flank_str, period, patient_len_diff > 0) %>%
+    count() %>%
+    pivot_wider(
+      names_from = `patient_len_diff > 0`,
+      values_from = n,
+      names_prefix = "variable_"
+    ) %>% ungroup()
+
+table_fisher %>% 
+  mutate(perc_variable = `variable_TRUE` / (`variable_TRUE` + `variable_FALSE`) * 100)
+
+fisher.test(
+  table_fisher %>% 
+    select(-has_flank_str) %>%
+    as.matrix()
+)
+
+table_plot <- df_patient_len_diff_filt %>% 
+    group_by(has_flank_str, period, patient_len_diff > 0) %>%
+    count() %>%
+    pivot_wider(
+      names_from = `patient_len_diff > 0`,
+      values_from = n,
+      names_prefix = "variable_"
+    ) %>% ungroup() %>% 
+    mutate(perc_variable = `variable_TRUE` / (`variable_TRUE` + `variable_FALSE`) * 100)
+
+table_plot %>%
+  ggplot(aes(x=as.factor(period), y=perc_variable, fill=has_flank_str)) +
+  geom_bar(stat='identity', position=position_dodge()) +
+  geom_text(aes(label = paste0(`variable_TRUE`, "/", `variable_TRUE` + `variable_FALSE`)), position=position_dodge(width=0.5), hjust=-0.1) +
+  coord_flip() +
+  xlab("Unit size") + 
+  ylab("Percentage of STRs variable") +
+  ylim(0, 45) +
+  labs(fill="Has flank STR")
+  
+# Variations in STRs with flank STRs are significantly longer
+t.test(
+  x=df_mutated_strs %>% filter(has_flank_str) %>% select(patient_len_diff) %>% unlist() %>%  as.integer(),
+  y=df_mutated_strs %>% filter(!has_flank_str) %>% select(patient_len_diff) %>% unlist() %>% as.integer()
+  )
+
+df_mutated_strs %>% 
+  # filter(patient_len_diff < 100) %>% 
+  ggplot(aes(x=has_flank_str, y=log(patient_len_diff))) +
+  # ggplot(aes(x=period, y=patient_len_diff)) +
+  geom_boxplot() 
+```
+
+```{r}
+df_patient_variation_filt %>% 
+  left_join(df_clinical, by="patient") %>% 
+  left_join(df_str_info %>% select(tmp_id, max_p_stretch), by="tmp_id") %>% 
+  mutate(variable = ifelse(patient_len_diff > 0, "variable", "not_variable")) %>% 
+  group_by(MSI, period, max_p_stretch, variable) %>% 
+  summarize(count = n()) %>% 
+  pivot_wider(
+    names_from = variable,
+    values_from = count
+  ) %>% 
+  mutate(perc_variable = variable / (variable + not_variable) * 100) %>%
+  ggplot(aes(x=max_p_stretch, y=perc_variable, colour=MSI)) +
+  geom_point() +
+  geom_smooth(se=T) +
+  facet_wrap(~period, scales="free_x") +
+  ylim(0, 100)
+
+df_patient_len_diff_filt %>% 
+  left_join(df_clinical, by="patient") %>% 
+  mutate(variable = ifelse(patient_len_diff > 0, "variable", "not_variable")) %>% 
+  group_by(MSI, period, ref, variable) %>% 
+  summarize(count = n()) %>% 
+  pivot_wider(
+    names_from = variable,
+    values_from = count
+  ) %>% 
+  mutate(perc_variable = variable / (variable + not_variable) * 100) %>% 
+  ggplot(aes(x=ref, y=perc_variable, colour=MSI)) +
+  geom_point() +
+  geom_smooth(se=F) +
+  facet_wrap(~period, scales="free_x") +
+  ylim(0, 100)
+
+df_patient_variation_filt %>% 
+  left_join(df_clinical, by="patient") %>% 
+  rowwise() %>% 
+  mutate(variable = ifelse(patient_len_diff > 0, "variable", "not_variable"), max_allele = max(allele_A_healthy, allele_B_healthy)) %>% 
+  group_by(MSI, period, max_allele, variable) %>% 
+  summarize(count = n()) %>% 
+  pivot_wider(
+    names_from = variable,
+    values_from = count
+  ) %>% 
+  mutate(perc_variable = variable / (variable + not_variable) * 100) %>% 
+  ggplot(aes(x=max_allele, y=perc_variable, colour=MSI)) +
+  geom_point() +
+  geom_smooth(se=F) +
+  facet_wrap(~period, scales="free_x") +
+  ylim(0, 100)
+```
+
 
 
 

@@ -1,0 +1,213 @@
+---
+title: "Comparing blood derived and healthy tissue samples"
+author: "Max Verbiest"
+date: '2022-04-25'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load libs}
+library(tidyverse)
+source("scripts/analyse_variation/str_gt_utils.R")
+```
+
+```{r}
+df_genotypes_solid <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/results/oxana_variation/crc_solid_april.csv") %>% 
+  filter(sample_type == "Solid Tissue Normal") %>% 
+  distinct() %>%
+  mutate(tmp_id = paste0(chr, "_", start), ref_len_diff = alt - ref)
+
+patients_solid <- df_genotypes_solid %>% 
+  select(patient) %>% 
+  distinct()
+
+df_genotypes_blood <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/results/oxana_variation/crc_bloodnormal_18apr.csv") %>% 
+  filter(patient %in% unique(df_genotypes_solid$patient)) %>% 
+  distinct() %>% 
+  mutate(tmp_id = paste0(chr, "_", start), ref_len_diff = alt - ref)
+
+df_genotypes <- rbind(
+  df_genotypes_blood, 
+  df_genotypes_solid %>% filter(patient %in% unique(df_genotypes_blood$patient))
+  )
+```
+
+```{r}
+df_genotypes_filt %>% 
+  group_by(patient, sample_type) %>% 
+  summarize(calls = n()) %>% 
+  ggplot(aes(x=reorder(patient, calls), y=calls, fill=sample_type)) +
+  geom_bar(position = position_dodge(), stat="identity") +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+```
+
+```{r}
+df_genotypes_wide <- df_genotypes %>% 
+  mutate(sample_type = if_else(sample_type == "Blood Derived Normal", "bdn", "stn")) %>% 
+  group_by(patient, sample_type, tmp_id) %>%
+  mutate(allele = LETTERS[1:n()]) %>% 
+  pivot_wider(
+    id_cols = c(patient, sample_type, tmp_id),
+    names_from = allele,
+    values_from = alt,
+    names_prefix = "allele_"
+  ) %>% 
+  mutate(allele_B = if_else(is.na(allele_B), allele_A, allele_B)) %>% 
+  group_by(patient, tmp_id) %>% 
+  pivot_wider(
+    id_cols = c(patient, tmp_id),
+    names_from = sample_type,
+    values_from = c(allele_A, allele_B)
+  ) %>% ungroup()
+
+df_genotypes_wide <- df_genotypes_wide %>% 
+  dplyr::filter(!is.na(allele_A_bdn),!is.na(allele_A_stn)) %>% 
+  dplyr::relocate(allele_A_stn, .before = allele_B_stn)
+
+df_genotypes_wide <- df_genotypes_wide %>% 
+  left_join(df_genotypes %>% select(tmp_id, period, ref) %>% distinct(), by="tmp_id") %>% 
+  rowwise() %>% 
+  mutate(
+    patient_len_diff = calc_patient_len_dif(allele_A_stn, allele_B_stn, allele_A_bdn, allele_B_bdn)
+    )
+```
+
+```{r}
+df_str_info <- read.csv("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel_meta_info.tsv", header=T, sep="\t")
+df_clinical <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/data/clinical/oxana_tcga_clinical.csv", header = TRUE) %>%
+  dplyr::select(c(case_submitter_id, project_id, gender, MSI, CMS))
+colnames(df_clinical)[1] <- "patient"
+
+df_genotypes_wide <- df_genotypes_wide %>% 
+  left_join(
+    df_str_info %>% select(c(tmp_id, in_segdup, region_type, neighbour_type)), 
+    by="tmp_id"
+  ) %>% 
+  left_join(
+    df_clinical, by="patient"
+  )
+    
+df_genotypes_wide_filt <- df_genotypes_wide %>% 
+  filter(!in_segdup) %>% 
+  select(-in_segdup)
+```
+
+```{r}
+df_genotypes_wide_filt %>% 
+  mutate(variable = ifelse(patient_len_diff > 0, "variable", "not_variable")) %>% 
+  group_by(variable, period) %>% 
+  count() %>% 
+  pivot_wider(
+    names_from = variable,
+    values_from = n
+  ) %>% 
+  mutate(perc_variable = variable / (variable + not_variable) * 100)
+```
+
+```{r}
+df_genotypes_wide_filt %>% 
+  mutate(
+    variable = ifelse(patient_len_diff > 0, "variable", "not_variable"),
+    has_neighbour = neighbour_type != "no_neighbour"
+    ) %>% 
+  group_by(region_type, period, variable) %>% 
+  count() %>% 
+  pivot_wider(
+    names_from = variable,
+    values_from = n
+  ) %>% 
+  mutate(perc_variable = variable / (variable + not_variable) * 100)
+```
+
+
+```{r}
+df_genotypes_wide_filt %>% 
+  filter(neighbour_type == "no_neighbour", period > 1) %>%
+  group_by(patient, patient_len_diff > 0) %>% 
+  summarize(calls = n()) %>% 
+  pivot_wider(
+      names_from = `patient_len_diff > 0`,
+      values_from = calls,
+      names_prefix = "variable_"
+    ) %>% ungroup() %>% 
+  mutate(perc_calls_variable = variable_TRUE / (variable_FALSE + variable_TRUE) * 100) %>% 
+  filter(!is.na(perc_calls_variable)) %>% 
+  left_join(df_clinical, by="patient") %>%
+  ggplot(aes(x=reorder(patient,perc_calls_variable), y=perc_calls_variable, fill=MSI)) +
+  geom_bar(stat='identity') +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+```
+
+```{r}
+df_genotypes_wide_filt$region_type <- factor(as.factor(df_genotypes_wide_filt$region_type), levels=c("intron/intergenic", "UTR", "CDS"), ordered=T)
+df_genotypes_wide_filt %>% 
+  filter(
+    patient_len_diff > 0, 
+    # period > 1,
+    # neighbour_type == "no_neighbour"
+    ) %>% 
+  group_by(region_type, period) %>% 
+  count() %>% 
+  left_join(
+    df_genotypes_wide_filt %>% 
+      # filter(neighbour_type == "no_neighbour") %>%
+      group_by(region_type, period) %>% 
+      count(),
+    by=c("region_type", "period")
+    ) %>% mutate(perc_variable = (n.x/n.y) * 100) %>%
+  ggplot(aes(x=as.factor(period), y=perc_variable, fill=region_type)) +
+  geom_bar(stat='identity', position = position_dodge()) +
+  scale_fill_hue()
+
+```
+
+
+```{r}
+df_genotypes_wide_filt %>% 
+  # filter(neighbour_type == "no_neighbour") %>% 
+  left_join(df_str_info %>% select(tmp_id, max_p_stretch), by="tmp_id") %>% 
+  mutate(variable = ifelse(patient_len_diff > 0, "variable", "not_variable")) %>% 
+  group_by(period, max_p_stretch, variable) %>% 
+  summarize(count = n()) %>% 
+  pivot_wider(
+    names_from = variable,
+    values_from = count
+  ) %>% 
+  mutate(perc_variable = variable / (variable + not_variable) * 100) %>%
+  ggplot(aes(x=max_p_stretch, y=perc_variable)) +
+  geom_point() +
+  geom_smooth(se=F) +
+  facet_wrap(~period, scales="free_x") +
+  ylim(0, 100)
+
+  
+df_genotypes_wide_filt %>% 
+  filter(neighbour_type == "no_neighbour") %>%
+  rowwise() %>% 
+  mutate(variable = ifelse(patient_len_diff > 0, "variable", "not_variable"), max_allele = max(allele_A_stn, allele_B_stn, allele_A_bdn, allele_B_bdn)) %>% 
+  group_by(period, max_allele, variable) %>% 
+  summarize(count = n()) %>% 
+  pivot_wider(
+    names_from = variable,
+    values_from = count
+  ) %>% 
+  mutate(perc_variable = variable / (variable + not_variable) * 100) %>%
+  ggplot(aes(x=max_allele, y=perc_variable)) +
+  geom_point() +
+  geom_smooth(se=F) +
+  facet_wrap(~period, scales="free_x") +
+  ylim(0, 100)
+```
+
+
+
+
+
+
+
+
+
+

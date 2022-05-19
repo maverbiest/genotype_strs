@@ -14,3 +14,4 @@ Slurm-*
 .DS_Store
 *.Rproj*
 .Rhistory
+.Rproj.user

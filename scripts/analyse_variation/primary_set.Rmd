@@ -13,54 +13,71 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 ```
 
+
+```{r}
+load_str_panel <- function(filepath) {
+  df_panel <- read.delim(filepath, header=FALSE, na.strings=".") %>% 
+    cbind(., str_split_fixed(.$V7, "[:]", n=Inf)) %>% 
+    dplyr::select(-c(V5, V6, V7, `3`)) %>% 
+    mutate(
+      `1` = ifelse(`1` == ".", NA, `1`),
+      `4` = as.integer(`4`)
+      )
+  
+  colnames(df_panel) <- c("chr", "start", "end", "period", "repeat_id", "msa", "max_p_stretch")
+  
+  df_panel <- df_panel %>% 
+    mutate(
+      tmp_id = paste0(chr, "_", start),
+      ref = (end - start + 1) / period
+    )
+  
+  return(df_panel)
+}
+
+add_panel_info <- function(df, panel, new_colname) {
+  df <- df %>% 
+    left_join(
+      panel %>% select(tmp_id) %>% distinct() %>% mutate(tmp = TRUE),
+      by="tmp_id"
+    ) %>%
+    mutate(tmp = if_else(is.na(tmp), FALSE, TRUE))
+  
+  colnames(df)[ncol(df)] <- new_colname
+  
+  return(df)
+}
+```
+
+
 ```{r load panels, echo=FALSE}
 # load tral_perf panel for exonic regions
-df_exon_panel <- read.delim("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel_exons.tsv", header=FALSE, na.strings=".") %>% 
-  cbind(., str_split_fixed(.$V7, "[:]", n=Inf)) %>% 
-  dplyr::select(-c(V5, V6, V7, `3`)) %>% 
-  mutate(
-    `1` = ifelse(`1` == ".", NA, `1`),
-    `4` = as.integer(`4`)
-    )
-colnames(df_exon_panel) <- c("chr", "start", "end", "period", "repeat_id", "msa", "max_p_stretch")
-
-df_exon_panel <- df_exon_panel %>% 
-  mutate(
-    tmp_id = paste0(chr, "_", start),
-    ref = (end - start + 1) / period
-  )
+df_exon_panel <- load_str_panel("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel_exons.tsv")
 
 # load tral_perf panel for CDS regions
-df_cds_panel <- read.delim("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel_CDS.tsv", header=FALSE, na.strings=".") %>% 
-  cbind(., str_split_fixed(.$V7, "[:]", n=Inf)) %>% 
-  dplyr::select(-c(V5, V6, V7, `3`)) %>% 
-  mutate(
-    `1` = ifelse(`1` == ".", NA, `1`),
-    `4` = as.integer(`4`)
-    )
+df_cds_panel <- load_str_panel("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel_CDS.tsv")
 
-colnames(df_cds_panel) <- c("chr", "start", "end", "period", "repeat_id", "msa", "max_p_stretch")
-df_cds_panel <- df_cds_panel %>% 
-  mutate(
-    tmp_id = paste0(chr, "_", start),
-    ref = (end - start + 1) / period
-  )
+# load tral_perf panel for STRs in segmental duplications
+df_segdup_panel <- load_str_panel("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel_segdups.tsv")
+
+# load tral_perf panel for STRs that have STRs in their flanking regions
+df_flank_panel <- load_str_panel("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel_flanks.tsv")
 ```
 
 ```{r load variation, echo=FALSE}
 # load variation data
-df_variation <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/results/oxana_variation/crc_variations_march.csv")
+df_variation <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/results/oxana_variation/crc_variations_all_march.csv")
 df_variation <- df_variation %>% 
   distinct() %>%  # Goes from 351157 -> 351064 after distinct(). Why?
   # mutate(alt = as.integer(alt), ref = as.integer(ref)) %>% 
   mutate(tmp_id = paste0(chr, "_", start), ref_len_diff = abs(alt - ref))
 
-df_clinical <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/data/oxana_tcga_clinical.csv", header = TRUE) %>%
+df_clinical <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/data/clinical/oxana_tcga_clinical.csv", header = TRUE) %>%
   dplyr::select(c(case_submitter_id, project_id, gender, MSI, CMS))
 colnames(df_clinical)[1] <- "patient"
 
 # pivot into wider table where allele A and B are on the same row
-df_patient_len_diff <- df_variation %>% 
+df_variation_wide <- df_variation %>% 
   group_by(patient, tmp_id) %>%
   mutate(allele = LETTERS[1:n()]) %>%
   pivot_wider(
@@ -72,33 +89,33 @@ df_patient_len_diff <- df_variation %>%
   mutate(allele_B = if_else(is.na(allele_B), allele_A, allele_B)) %>% 
   ungroup()
 
-df_patient_len_diff <- df_patient_len_diff %>% 
+df_variation_wide <- df_variation_wide %>% 
   left_join(df_variation %>% select(tmp_id, period, ref) %>% distinct(), by="tmp_id") %>% 
   mutate(
-    patient_len_diff = abs((ref - allele_A)) + abs((ref - allele_B))
+    total_len_diff = abs((ref - allele_A)) + abs((ref - allele_B))
     )
 
-df_mutated_strs <- df_patient_len_diff %>% 
-  dplyr::filter(patient_len_diff > 0)
+df_nonref_strs <- df_variation_wide %>% 
+  dplyr::filter(total_len_diff > 0)
 ```
 
 ```{r}
-df_patient_lef_diff <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/results/oxana_variation/crc_variations_march_wide.tsv", sep="\t", header=TRUE)
+df_variation_wide <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/results/oxana_variation/crc_variations_march_wide.tsv", sep="\t", header=TRUE)
 ```
 
-
 ```{r}
-df_summary <- df_patient_len_diff %>% 
+df_summary_filt <- df_variation_wide %>% 
+  filter(in_segdup == FALSE, has_flank_str == FALSE) %>% 
   group_by(patient) %>% 
   summarize(
     calls = n()
   ) %>% 
   left_join(
-    df_mutated_strs %>% 
+    df_nonref_strs %>% 
       group_by(patient) %>% 
       summarize(
         nonref_calls = n(), 
-        total_len_diff = sum(patient_len_diff), 
+        total_len_diff = sum(total_len_diff), 
         mean_len_dif = total_len_diff/nonref_calls
         ), by="patient") %>% 
   left_join(
@@ -107,24 +124,34 @@ df_summary <- df_patient_len_diff %>%
   ) %>% 
   mutate(frac_nonref = nonref_calls / calls)
 
-write.table(df_summary, "../../results/oxana_variation/crc_variations_march_summary.tsv", row.names = FALSE, sep="\t", quote=FALSE)
+write.table(df_summary_filt, "../../results/oxana_variation/crc_variations_march_summary_filt.tsv", row.names = FALSE, sep="\t", quote=FALSE)
 ```
 
 ```{r}
-df_patient_len_diff <- df_patient_len_diff %>% 
-  left_join(
-    df_exon_panel %>% select(tmp_id) %>% distinct() %>% mutate(in_exon = TRUE),
-    by="tmp_id"
-  ) %>%
-  mutate(in_exon = if_else(is.na(in_exon), FALSE, TRUE))
+df_variation_wide <- add_panel_info(df_variation_wide, df_exon_panel, "in_exon")
+df_variation_wide <- add_panel_info(df_variation_wide, df_cds_panel, "in_cds")
+df_variation_wide <- add_panel_info(df_variation_wide, df_segdup_panel, "in_segdup")
+df_variation_wide <- add_panel_info(df_variation_wide, df_flank_panel, "has_flank_str")
 
-df_patient_len_diff <- df_patient_len_diff %>% 
-  left_join(
-    df_cds_panel %>% select(tmp_id) %>% distinct() %>% mutate(in_cds = TRUE),
-    by="tmp_id"
-  ) %>%
-  mutate(in_cds = if_else(is.na(in_cds), FALSE, TRUE))
+df_nonref_strs <- df_variation_wide %>% 
+  dplyr::filter(total_len_diff > 0)
+
+df_nonref_strs_filt <- df_variation_wide %>% 
+  filter(in_segdup == FALSE, has_flank_str == FALSE) %>% 
+  dplyr::filter(total_len_diff > 0)
 ```
+
+```{r}
+df_summary %>% 
+  ggplot(aes(reorder(patient,calls), calls, fill=MSI)) +
+  geom_bar(stat='identity')
+
+df_summary_filt %>% 
+  ggplot(aes(reorder(patient,calls), calls, fill=MSI)) +
+  geom_bar(stat='identity') +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+```
+
 
 ```{r}
 df_variation <- df_variation %>% 
@@ -156,10 +183,6 @@ df_variation %>%
              show.legend = FALSE) +
   theme_void()
 ```
-
-
-
-
 
 
 
