@@ -11,7 +11,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r load libs}
 library(tidyverse)
-source("scripts/analyse_variation/str_gt_utils.R")
+source("str_gt_utils.R")
+# source("scripts/analyse_variation/str_gt_utils.R")
 ```
 
 ```{r}

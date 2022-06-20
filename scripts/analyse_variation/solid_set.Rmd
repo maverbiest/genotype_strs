@@ -75,7 +75,7 @@ write.table(df_patient_variation, "/Users/maxverbiest/PhD/projects/genotype_strs
 
 
 ```{r}
-df_patient_variation <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/results/oxana_variation/patient_variation_wide.tsv", header=T, sep="\t")
+df_patient_variation_filt <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/results/oxana_variation/patient_variation_wide_blood_filt.csv", header=T, sep=",")
 df_str_info <- read.csv("/Users/maxverbiest/PhD/data/str_panels/tral_and_perf_panel_meta_info.tsv", header=T, sep="\t")
 
 # This filter takes DF from 3,767,565 -> 3,559,889 rows
@@ -87,7 +87,7 @@ df_patient_variation_filt <- df_patient_variation %>%
 # This filter takes DF from  3,559,889 -> 2,158,483 rows (remove homorepeats and repeats with close neighbours)
 df_patient_variation_filt <- df_patient_variation_filt %>% 
   left_join(df_str_info %>% select(tmp_id, neighbour_type), by="tmp_id") %>% 
-  filter(period > 1, neighbour_type == "no_neighbour") %>% 
+  filter(period > 0, neighbour_type == "no_neighbour") %>% 
   select(-neighbour_type)
 
 df_clinical <- read.csv("/Users/maxverbiest/PhD/projects/genotype_strs/data/clinical/oxana_tcga_clinical.csv", header = TRUE) %>%
@@ -106,7 +106,7 @@ df_patient_variation_filt %>%
   geom_bar(stat='identity') +
   theme(axis.text.x = element_text(angle=45, hjust=1))
 
-# This removes 19 MSS patients that have very few called loci (84 -> 69 patients)
+# This removes 20 MSS patients that have very few called loci (157 -> 137 patients)
 df_patient_variation_filt <- df_patient_variation_filt %>% 
   group_by(patient) %>% 
   filter(n() > 5000)
@@ -177,6 +177,7 @@ df_patient_variation_filt %>%
 df_locus_variability <- df_patient_variation_filt %>%
   left_join(df_clinical, by="patient") %>% 
   mutate(instable = patient_len_diff > 0) %>% 
+  # group_by(tmp_id, instable) %>%
   group_by(MSI, tmp_id, instable) %>%
   summarize(count=n()) %>% 
   pivot_wider(
@@ -198,14 +199,16 @@ df_locus_variability <- df_locus_variability %>%
         df_clinical, by="patient"
         ) %>% 
       mutate(instable = patient_len_diff > 0) %>% 
-      group_by(MSI, tmp_id) %>% 
+      # group_by(tmp_id) %>% 
+      group_by(MSI, tmp_id) %>%
+      # summarize(avg_size_diff = mean(patient_len_diff)), by=c("tmp_id")
       summarize(avg_size_diff = mean(patient_len_diff)), by=c("MSI", "tmp_id")
     )
   
 df_locus_variability <- df_locus_variability %>% 
   left_join(df_patient_variation_filt %>% ungroup() %>% select(tmp_id, repeat_id) %>% distinct(), by="tmp_id")
 
-write.table(df_locus_variability, "/Users/maxverbiest/PhD/projects/genotype_strs/results/oxana_variation/locus_variation.tsv", quote=F, row.names=F, sep="\t")
+write.table(df_locus_variability, "/Users/maxverbiest/PhD/projects/genotype_strs/results/oxana_variation/20220527_locus_variation_MSI_groups.csv", quote=F, row.names=F, sep=",")
 ```
 
 
